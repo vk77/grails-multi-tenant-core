@@ -27,8 +27,11 @@ import grails.plugin.multitenant.core.DomainNameDatabaseTenantResolver
 import grails.plugin.multitenant.core.DomainNamePropertyTenantResolver
 import grails.plugin.multitenant.core.CurrentTenantThreadLocal
 
+import grails.plugin.multitenant.CurrentTenantWithGodMode
+import grails.plugin.multitenant.TenantEventHandlerWithGodMode
+
 class MultiTenantCoreGrailsPlugin {
-  def version = "1.0.0"
+  def version = "1.0.1"
   def grailsVersion = "1.3.0 > *"
   def dependsOn = [falconeUtil: "1.0"]
   def author = "Eric Martineau, Scott Ryan"
@@ -62,14 +65,21 @@ class MultiTenantCoreGrailsPlugin {
       }
 
     } else {
-
+	  	
       //This registers hibernate events that force filtering on domain classes
       //In single tenant mode, the records are automatically filtered by different
       //data sources.
-      tenantEventHandler(TenantEventHandler) {
-        sessionFactory = ref("sessionFactory")
-        currentTenant = ref("currentTenant")
-      }
+	  if(ConfigurationHolder.config.tenant.withGodMode){
+	      tenantEventHandler(TenantEventHandlerWithGodMode) {
+	        sessionFactory = ref("sessionFactory")
+	        currentTenant = ref("currentTenant")
+	      }
+	  }else {
+	      tenantEventHandler(TenantEventHandler) {
+	        sessionFactory = ref("sessionFactory")
+	        currentTenant = ref("currentTenant")
+	      }
+	  }
     }
     //Bean container for all multi-tenant beans
     tenantBeanContainer(TenantBeanContainer) {
@@ -82,9 +92,15 @@ class MultiTenantCoreGrailsPlugin {
     def resolverType = ConfigHelper.get("request") {it.tenant.resolver.type}
     if (resolverType == "request") {
       //This implementation
-      currentTenant(CurrentTenantThreadLocal) {
-        eventBroker = ref("eventBroker")
-      }
+	  if(ConfigurationHolder.config.tenant.withGodMode){
+	      currentTenant(CurrentTenantWithGodMode) {
+	        eventBroker = ref("eventBroker")
+	      }
+	  } else {
+	      currentTenant(CurrentTenantThreadLocal) {
+	        eventBroker = ref("eventBroker")
+	      }
+ 	  }
 
       def requestResolverType = ConfigHelper.get("config") {it.tenant.resolver.request.dns.type}
       if (requestResolverType == "config") {
@@ -110,16 +126,33 @@ class MultiTenantCoreGrailsPlugin {
       //Listen for criteria created events
       hibernate.criteriaCreated("tenantFilter") {
         CriteriaContext context ->
+
+		if(ConfigurationHolder.config.tenant.withGodMode && ctx.currentTenant.isGodMode()){
+			return
+		}
+
         boolean hasAnnotation = TenantUtils.isAnnotated(context.entityClass)
-        if (context.entityClass == null || hasAnnotation) {
+		boolean hasSharedAnnotation = TenantUtils.isAnnotatedAsShared(context.entityClass)
+        if (context.entityClass == null || (hasAnnotation || hasSharedAnnotation)) {
           final Integer tenant = ctx.currentTenant.get();
-          context.criteria.add(Expression.eq("tenantId", tenant));
+          if(hasAnnotation){
+          	context.criteria.add(Expression.eq("tenantId", tenant));
+		  } else if(hasSharedAnnotation){
+			if(!context.criteria.iterateSubcriteria().toList().find{it.path == "tenants"}){
+				context.criteria.createCriteria("tenants").add(Expression.eq("tenantId", tenant))
+			}
+		  }
         }
       }
 
       //Listen for query created events
-      hibernate.queryCreated("tenantFilter") {
-        Query query ->
+      hibernate.queryCreated("tenantFilter") { Query query ->
+
+		if(ConfigurationHolder.config.tenant.withGodMode && ctx.currentTenant.isGodMode()){
+			return
+		}
+	
+        
         for (String param: query.getNamedParameters()) {
           if ("tenantId".equals(param)) {
             query.setParameter("tenantId", ctx.currentTenant.get(), new IntegerType());
@@ -194,12 +227,15 @@ class MultiTenantCoreGrailsPlugin {
   def doWithDynamicMethods = {ctx ->
 
     if (ConfigurationHolder.config.tenant.mode != "singleTenant") {
+	
       //Add a nullable contraint for tenantId.
       application.domainClasses.each {DefaultGrailsDomainClass domainClass ->
-        domainClass.constraints?.get("tenantId")?.applyConstraint(ConstrainedProperty.NULLABLE_CONSTRAINT, true);
-        domainClass.clazz.metaClass.beforeInsert = {
-          if (tenantId == null) tenantId = 0
-        }
+		if(domainClass.clazz.metaClass.properties.find {p -> p.name == "tenantId"}){
+	        domainClass.constraints?.get("tenantId")?.applyConstraint(ConstrainedProperty.NULLABLE_CONSTRAINT, true);
+	        domainClass.clazz.metaClass.beforeInsert = {
+	          if (tenantId == null) tenantId = 0
+	        }
+		}
       }
     }
 

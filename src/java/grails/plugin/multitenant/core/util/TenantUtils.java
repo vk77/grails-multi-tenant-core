@@ -2,6 +2,7 @@ package grails.plugin.multitenant.core.util;
 
 import grails.plugin.multitenant.core.CurrentTenant;
 import grails.plugin.multitenant.core.groovy.compiler.MultiTenant;
+import grails.plugin.multitenant.core.groovy.compiler.MultiTenantShared;
 import groovy.lang.Closure;
 
 import java.lang.annotation.Annotation;
@@ -76,5 +77,27 @@ public class TenantUtils {
         }
         return hasAnnotation;
     }
+
+	/**
+	* Whether or not a particular class is annotated as MultiTenant and has an ability to be hared across multiple tenants (multiTenant 	    DB mode only)
+	*
+	* @param aClass	
+	* @return
+	*/
+
+	public static boolean isAnnotatedAsShared(Class aClass) {
+	    boolean hasAnnotation = false;
+	    if (aClass != null) {
+	        Annotation[] annotations = aClass.getAnnotations();
+	        for (Annotation annotation : annotations) {
+	            if ((annotation instanceof MultiTenantShared)) {
+	                hasAnnotation = true;
+	                break;
+	            }
+	        }
+	    }
+	    return hasAnnotation;
+	}
+
 }
 
