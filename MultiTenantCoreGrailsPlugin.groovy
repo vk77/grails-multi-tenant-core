@@ -27,8 +27,8 @@ import grails.plugin.multitenant.core.DomainNameDatabaseTenantResolver
 import grails.plugin.multitenant.core.DomainNamePropertyTenantResolver
 import grails.plugin.multitenant.core.CurrentTenantThreadLocal
 
-import grails.plugin.multitenant.CurrentTenantWithGodMode
-import grails.plugin.multitenant.TenantEventHandlerWithGodMode
+import grails.plugin.multitenant.CurrentTenantWithMasterMode
+import grails.plugin.multitenant.TenantEventHandlerWithMasterMode
 
 class MultiTenantCoreGrailsPlugin {
   def version = "1.0.1"
@@ -69,8 +69,8 @@ class MultiTenantCoreGrailsPlugin {
       //This registers hibernate events that force filtering on domain classes
       //In single tenant mode, the records are automatically filtered by different
       //data sources.
-	  if(ConfigurationHolder.config.tenant.withGodMode){
-	      tenantEventHandler(TenantEventHandlerWithGodMode) {
+	  if(ConfigurationHolder.config.tenant.withMasterMode){
+	      tenantEventHandler(TenantEventHandlerWithMasterMode) {
 	        sessionFactory = ref("sessionFactory")
 	        currentTenant = ref("currentTenant")
 	      }
@@ -92,8 +92,8 @@ class MultiTenantCoreGrailsPlugin {
     def resolverType = ConfigHelper.get("request") {it.tenant.resolver.type}
     if (resolverType == "request") {
       //This implementation
-	  if(ConfigurationHolder.config.tenant.withGodMode){
-	      currentTenant(CurrentTenantWithGodMode) {
+	  if(ConfigurationHolder.config.tenant.withMasterMode){
+	      currentTenant(CurrentTenantWithMasterMode) {
 	        eventBroker = ref("eventBroker")
 	      }
 	  } else {
@@ -127,7 +127,7 @@ class MultiTenantCoreGrailsPlugin {
       hibernate.criteriaCreated("tenantFilter") {
         CriteriaContext context ->
 
-		if(ConfigurationHolder.config.tenant.withGodMode && ctx.currentTenant.isGodMode()){
+		if(ConfigurationHolder.config.tenant.withMasterMode && ctx.currentTenant.isMasterMode()){
 			return
 		}
 
@@ -148,7 +148,7 @@ class MultiTenantCoreGrailsPlugin {
       //Listen for query created events
       hibernate.queryCreated("tenantFilter") { Query query ->
 
-		if(ConfigurationHolder.config.tenant.withGodMode && ctx.currentTenant.isGodMode()){
+		if(ConfigurationHolder.config.tenant.withMasterMode && ctx.currentTenant.isMasterMode()){
 			return
 		}
 	
